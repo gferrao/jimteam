@@ -5,6 +5,10 @@
     <string name="hello_world">Hello world!</string>
     <string name="menu_settings">Settings</string>
     <string name="app_id">384220154988716</string>
-
+    
+    <string name="announce">Announce</string>
+    <string name="get_started">To get started, log in using Facebook</string>
     <string name="my_events">My Events</string>
+    <string name="settings">Settings</string>
+
 </resources>

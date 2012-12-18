@@ -1,117 +1,205 @@
 package pt.jimteam;
 
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
-
-import pt.jimteam.resources.Event;
-import android.content.Context;
+import android.content.Intent;
 import android.os.Bundle;
-import android.view.LayoutInflater;
-import android.view.View;
-import android.view.ViewGroup;
-import android.widget.AdapterView;
-import android.widget.AdapterView.OnItemClickListener;
-import android.widget.ArrayAdapter;
-import android.widget.ListView;
-import android.widget.TextView;
+import android.support.v4.app.Fragment;
+import android.support.v4.app.FragmentActivity;
+import android.support.v4.app.FragmentManager;
+import android.support.v4.app.FragmentTransaction;
+import android.view.Menu;
+import android.view.MenuItem;
 
-import com.facebook.FacebookActivity;
-import com.facebook.Request;
-import com.facebook.Response;
-import com.google.gson.Gson;
+import com.facebook.Session;
+import com.facebook.SessionState;
+import com.facebook.UiLifecycleHelper;
 
-public class MainActivity extends FacebookActivity {
+public class MainActivity extends FragmentActivity {
+
+	private static final int SPLASH = 0;
+	private static final int MY_EVENTS = 1;
+	private static final int SETTINGS = 2;
+	private static final int FRAGMENT_COUNT = SETTINGS + 1;
+
+	private Fragment[] fragments = new Fragment[FRAGMENT_COUNT];
+	
+	private boolean isResumed = false;
+	
+	private UiLifecycleHelper uiHelper;
+	private Session.StatusCallback callback = new Session.StatusCallback() {
+		
+	    @Override
+	    public void call(Session session, SessionState state, Exception exception) {
+	    	
+	        onSessionStateChange(session, state, exception);
+	    }
+	};
+	
+	private MenuItem settings;
 
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
-		
+
 		super.onCreate(savedInstanceState);
-		setContentView(R.layout.list);
-		this.openSession();
 		
-		TextView title = (TextView) findViewById(R.id.title);
-		title.setText(R.string.my_events);
+		uiHelper = new UiLifecycleHelper(this, callback);
+		uiHelper.onCreate(savedInstanceState);
 		
-		Request req = Request.newGraphPathRequest(this.getSession(), "me/events", new Request.Callback() {
-    		
-    		@Override
-    		public void onCompleted(Response response) {
-    			
-//    			Log.v("tag", response.toString());
-    			
-    			JSONObject responseJSON = response.getGraphObject().getInnerJSONObject();
-    			
-    			try {
-				
-    				JSONArray eventsJSON = responseJSON.getJSONArray("data");
-    				
-    				Gson gson = new Gson();
-        			Event[] events = gson.fromJson(eventsJSON.toString(),  Event[].class);
-        			
-        			ListView listView = (ListView) findViewById(android.R.id.list);
-	    			listView.setAdapter(new ListAdapter(MainActivity.this, events));
-	    			listView.setTextFilterEnabled(true);
-	    			
-	    			listView.setOnItemClickListener(new OnItemClickListener() {
-	    				
-	    				public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-	    					
-	    					// on click
-	    				}
-	    			});
-    			} catch (JSONException e) {
-					
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}	
-    		}
-    	});
-    	
-    	Request.executeBatchAsync(req);
+		setContentView(R.layout.main);
+		
+		FragmentManager fm = getSupportFragmentManager();
+		fragments[SPLASH] = fm.findFragmentById(R.id.splashFragment);
+		fragments[MY_EVENTS] = fm.findFragmentById(R.id.myEventsFragment);
+		fragments[SETTINGS] = fm.findFragmentById(R.id.userSettingsFragment);
+
+		FragmentTransaction transaction = fm.beginTransaction();
+		
+		for (int i = 0; i < fragments.length; i++) {
+			
+			transaction.hide(fragments[i]);
+		}
+		
+		transaction.commit();
 	}
 	
-	private class ListAdapter extends ArrayAdapter<Event> {
+	@Override
+	public void onResume() {
 		
-		private Context context;
-		private final Event[] events;
+	    super.onResume();
+	    uiHelper.onResume();
+	    isResumed = true;
+	}
 
-		public ListAdapter(Context context, Event[] events) {
-			
-			super(context, R.layout.list_item, events);
-			this.context = context;
-			this.events = events;
-		}
+	@Override
+	public void onPause() {
+		
+	    super.onPause();
+	    uiHelper.onPause();
+	    isResumed = false;
+	}
 
-		public View getView(int position, View convertView, ViewGroup parent) {
+	@Override
+	public void onActivityResult(int requestCode, int resultCode, Intent data) {
+		
+	    super.onActivityResult(requestCode, resultCode, data);
+	    uiHelper.onActivityResult(requestCode, resultCode, data);
+	}
 
-			LayoutInflater inflater = (LayoutInflater) context.getSystemService(Context.LAYOUT_INFLATER_SERVICE);
+	@Override
+	public void onDestroy() {
+		
+	    super.onDestroy();
+	    uiHelper.onDestroy();
+	}
 
-			View rowView;
+	@Override
+	protected void onSaveInstanceState(Bundle outState) {
+		
+	    super.onSaveInstanceState(outState);
+	    uiHelper.onSaveInstanceState(outState);
+	}
+	
+	@Override
+	protected void onResumeFragments() {
+		
+	    super.onResumeFragments();
+	    Session session = Session.getActiveSession();
 
-			if (convertView == null) {
-
-				// get layout from list_item.xml
-				rowView = inflater.inflate(R.layout.list_item, parent, false);
-			} else {
-				
-				rowView = (View) convertView;
-			}
-			
-			// set text based on selected text
-			TextView first_line = (TextView) rowView.findViewById(R.id.first_line);
-			TextView second_line = (TextView) rowView.findViewById(R.id.second_line);
-			
-			first_line.setText(events[position].getStart_time());
-			second_line.setText(events[position].getName() + " @ " + events[position].getLocation());
-
-			return rowView;
-		}
-
-		@Override
-		public int getCount() {
-			
-			return events.length;
-		}
+	    if (session != null && session.isOpened()) {
+	    	
+	        // if the session is already open,
+	        // try to show the selection fragment
+	        showFragment(MY_EVENTS, false);
+	    } else {
+	    	
+	        // otherwise present the splash screen
+	        // and ask the user to login.
+	        showFragment(SPLASH, false);
+	    }
+	}
+	
+	@Override
+	public boolean onPrepareOptionsMenu(Menu menu) {
+		
+	    // only add the menu when the selection fragment is showing
+	    if (fragments[MY_EVENTS].isVisible()) {
+	    	
+	        if (menu.size() == 0) {
+	        	
+	            settings = menu.add(R.string.settings);
+	        }
+	        return true;
+	    } else {
+	    	
+	        menu.clear();
+	        settings = null;
+	    }
+	    
+	    return false;
+	}
+	
+	@Override
+	public boolean onOptionsItemSelected(MenuItem item) {
+		
+	    if (item.equals(settings)) {
+	    	
+	        showFragment(SETTINGS, true);
+	        return true;
+	    }
+	    
+	    return false;
+	}
+	
+	private void onSessionStateChange(Session session, SessionState state, Exception exception) {
+		
+	    // Only make changes if the activity is visible
+	    if (isResumed) {
+	    	
+	        FragmentManager manager = getSupportFragmentManager();
+	        
+	        // Get the number of entries in the back stack
+	        int backStackSize = manager.getBackStackEntryCount();
+	        
+	        // Clear the back stack
+	        for (int i = 0; i < backStackSize; i++) {
+	        	
+	            manager.popBackStack();
+	        }
+	        
+	        if (state.isOpened()) {
+	        	
+	            // If the session state is open:
+	            // Show the authenticated fragment
+	            showFragment(MY_EVENTS, false);
+	        } else if (state.isClosed()) {
+	        	
+	            // If the session state is closed:
+	            // Show the login fragment
+	            showFragment(SPLASH, false);
+	        }
+	    }
+	}
+	
+	private void showFragment(int fragmentIndex, boolean addToBackStack) {
+		
+	    FragmentManager fm = getSupportFragmentManager();
+	    FragmentTransaction transaction = fm.beginTransaction();
+	    
+	    for (int i = 0; i < fragments.length; i++) {
+	    	
+	        if (i == fragmentIndex) {
+	        	
+	            transaction.show(fragments[i]);
+	        } else {
+	        	
+	            transaction.hide(fragments[i]);
+	        }
+	    }
+	    
+	    if (addToBackStack) {
+	    	
+	        transaction.addToBackStack(null);
+	    }
+	    
+	    transaction.commit();
 	}
 }
