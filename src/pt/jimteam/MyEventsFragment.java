@@ -1,5 +1,7 @@
 package pt.jimteam;
 
+import java.util.Arrays;
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -21,8 +23,11 @@ import android.widget.TextView;
 import com.facebook.Request;
 import com.facebook.Response;
 import com.facebook.Session;
+import com.facebook.Session.StatusCallback;
 import com.facebook.SessionState;
 import com.facebook.UiLifecycleHelper;
+import com.facebook.internal.SessionTracker;
+import com.facebook.internal.Utility;
 import com.google.gson.Gson;
 
 public class MyEventsFragment extends Fragment {
@@ -44,6 +49,9 @@ public class MyEventsFragment extends Fragment {
 	
 	private static final int REAUTH_ACTIVITY_CODE = 100;
 	
+	private SessionTracker mSessionTracker;
+	private Session mCurrentSession;
+	
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
 		
@@ -61,14 +69,7 @@ public class MyEventsFragment extends Fragment {
 		titleView = (TextView) view.findViewById(R.id.title);
 		eventsView = (ListView) view.findViewById(android.R.id.list);
 		
-		// Check for an open session
-	    Session session = Session.getActiveSession();
-	    
-	    if (session != null && session.isOpened()) {
-	    	
-	        // Get the user's data
-	        makeRequest(session);
-	    }
+		signInWithFacebook();
 		
 		return view;
 	}
@@ -81,6 +82,13 @@ public class MyEventsFragment extends Fragment {
 	    if (requestCode == REAUTH_ACTIVITY_CODE) {
 	    	
 	        uiHelper.onActivityResult(requestCode, resultCode, data);
+	    }
+	    
+	    Session.getActiveSession().onActivityResult(this.getActivity(), requestCode, resultCode, data);
+
+	    if (mCurrentSession.isOpened()) {
+	    	
+	    	makeRequest(mCurrentSession);
 	    }
 	}
 
@@ -121,8 +129,44 @@ public class MyEventsFragment extends Fragment {
 	    }
 	}
 	
-	private void makeRequest(final Session session) {
-		
+	private void signInWithFacebook() {
+
+	    mSessionTracker = new SessionTracker(this.getActivity().getBaseContext(), new StatusCallback() {
+
+	        @Override
+	        public void call(Session session, SessionState state, Exception exception) {
+	        	
+	        	
+	        }
+	    }, null, false);
+
+	    String applicationId = Utility.getMetadataApplicationId(this.getActivity().getBaseContext());
+	    mCurrentSession = mSessionTracker.getSession();
+
+	    if (mCurrentSession == null || mCurrentSession.getState().isClosed()) {
+	    	
+	        mSessionTracker.setSession(null);
+	        Session session = new Session.Builder(this.getActivity().getBaseContext()).setApplicationId(applicationId).build();
+	        Session.setActiveSession(session);
+	        mCurrentSession = session;
+	    }
+
+	    if (!mCurrentSession.isOpened()) {
+	    	
+	        Session.OpenRequest openRequest = null;
+	        openRequest = new Session.OpenRequest(MyEventsFragment.this);
+
+	        if (openRequest != null) {
+
+	            openRequest.setPermissions(Arrays.asList("user_events"));
+
+	            mCurrentSession.openForRead(openRequest);
+	        }
+	    }
+	}
+	
+	private void makeRequest(Session session) {
+        
 		if (session.isOpened()) {
 
 			Request req = Request.newGraphPathRequest(session, "me/events", new Request.Callback() {
@@ -130,7 +174,7 @@ public class MyEventsFragment extends Fragment {
 				@Override
 				public void onCompleted(Response response) {
 
-					// Log.v("tag", response.toString());
+//					Log.v("tag", response.toString());
 
 					JSONObject responseJSON = response.getGraphObject().getInnerJSONObject();
 
@@ -160,7 +204,7 @@ public class MyEventsFragment extends Fragment {
 					}
 				}
 			});
-
+            
 			Request.executeBatchAsync(req);
 		}
 	} 
